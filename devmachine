@@ -1,0 +1,279 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# DevMachine - Production-Grade Dev Environment CLI Tool
+# VERSION="1.0.0"
+
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly CONFIG_DIR="${SCRIPT_DIR}/config"
+readonly MODULES_DIR="${SCRIPT_DIR}/modules"
+readonly AI_DIR="${SCRIPT_DIR}/ai"
+readonly TMP_DIR="${SCRIPT_DIR}/tmp"
+readonly LOGS_DIR="${SCRIPT_DIR}/logs"
+
+# Initialize directories
+mkdir -p "${CONFIG_DIR}" "${MODULES_DIR}" "${AI_DIR}" "${AI_DIR}/providers" "${TMP_DIR}" "${LOGS_DIR}"
+
+# Global configuration
+readonly CONFIG_FILE="${CONFIG_DIR}/devmachine.conf"
+readonly LOG_FILE="${LOGS_DIR}/devmachine.log"
+readonly PROFILE_D_DIR="/etc/profile.d"
+
+# Logging functions
+log() {
+    local level="$1"
+    shift
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [${level}] $*" | tee -a "${LOG_FILE}"
+}
+
+log_info() { log "INFO" "$*"; }
+log_warn() { log "WARN" "$*"; }
+log_error() { log "ERROR" "$*"; }
+log_success() { log "SUCCESS" "$*"; }
+
+# Load configuration
+load_config() {
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        log_warn "Configuration file not found at ${CONFIG_FILE}"
+        return 1
+    fi
+
+    # Source configuration safely
+    while IFS='=' read -r key value; do
+        # Skip comments and empty lines
+        [[ -z "${key}" || "${key}" =~ ^[[:space:]]*# ]] && continue
+
+        # Remove quotes from values
+        value="${value%\"}"
+        value="${value#\"}"
+
+        declare -g "CONFIG_${key}=${value}"
+    done < "${CONFIG_FILE}"
+}
+
+# Module discovery
+discover_modules() {
+    local -a modules
+    for module in "${MODULES_DIR}"/*.sh; do
+        [[ -f "${module}" ]] && modules+=("${module##*/}")
+    done
+    echo "${modules[@]}"
+}
+
+# Module execution
+run_module() {
+    local module="$1"
+    shift
+    local module_path="${MODULES_DIR}/${module}"
+
+    if [[ ! -f "${module_path}" ]]; then
+        log_error "Module not found: ${module}"
+        return 1
+    fi
+
+    # Execute module in a clean environment
+    local module_result=0
+    (
+        source "${module_path}" || exit 1
+        case "${1:-}" in
+            install)
+                install "$@"
+                ;;
+            remove)
+                remove "$@"
+                ;;
+            status)
+                status "$@"
+                ;;
+            *)
+                echo "Usage: ${module} {install|remove|status}"
+                exit 1
+                ;;
+        esac
+    ) || module_result=$?
+
+    return ${module_result}
+}
+
+# Doctor command
+run_doctor() {
+    log_info "Running system diagnostics..."
+
+    local issues=0
+
+    # Check required commands
+    local required_commands=("curl" "wget" "tar" "unzip" "docker")
+    for cmd in "${required_commands[@]}"; do
+        if ! command -v "${cmd}" &> /dev/null; then
+            log_error "Required command not found: ${cmd}"
+            ((issues++))
+        fi
+    done
+
+    # Check write permissions
+    if [[ ! -w "${PROFILE_D_DIR}" ]]; then
+        log_error "No write access to ${PROFILE_D_DIR}"
+        ((issues++))
+    fi
+
+    # Check Docker status
+    if command -v docker &> /dev/null; then
+        if ! docker info &> /dev/null; then
+            log_warn "Docker is not running"
+        fi
+    fi
+
+    # Check modules
+    log_info "Installed modules:"
+    for module in $(discover_modules); do
+        local module_name="${module%.sh}"
+        if run_module "${module_name}" status &> /dev/null; then
+            log_success "  ✓ ${module_name}"
+        else
+            log_warn "  ✗ ${module_name}"
+        fi
+    done
+
+    if [[ ${issues} -eq 0 ]]; then
+        log_success "System check passed"
+    else
+        log_error "Found ${issues} issues"
+        return 1
+    fi
+}
+
+# AI command
+run_ai() {
+    local prompt="$1"
+
+    if [[ ! -f "${CONFIG_FILE}" ]]; then
+        log_error "Configuration file not found. Please run 'devmachine config show' first."
+        return 1
+    fi
+
+    if ! load_config; then
+        log_error "Failed to load configuration"
+        return 1
+    fi
+
+    if [[ -z "${CONFIG_AI_PROVIDER:-}" ]]; then
+        log_error "AI provider not configured. Please set AI_PROVIDER in config."
+        return 1
+    fi
+
+    local ai_script="${AI_DIR}/providers/${CONFIG_AI_PROVIDER}.sh"
+    if [[ ! -f "${ai_script}" ]]; then
+        log_error "AI provider not found: ${CONFIG_AI_PROVIDER}"
+        return 1
+    fi
+
+    source "${AI_DIR}/ai_engine.sh"
+    ai_generate_module "${prompt}"
+}
+
+# Configuration command
+run_config() {
+    case "${1:-}" in
+        show)
+            if [[ -f "${CONFIG_FILE}" ]]; then
+                echo "Configuration file: ${CONFIG_FILE}"
+                echo ""
+                cat "${CONFIG_FILE}"
+            else
+                echo "Configuration file not found at ${CONFIG_FILE}"
+                echo ""
+                echo "Please create it with the following content:"
+                echo ""
+                echo 'AI_PROVIDER=""'
+                echo 'AI_API_KEY=""'
+                echo 'AI_MODEL=""'
+            fi
+            ;;
+        *)
+            echo "Usage: devmachine config {show}"
+            ;;
+    esac
+}
+
+# Main command dispatcher
+main() {
+    local command="${1:-}"
+    shift || true
+
+    case "${command}" in
+        add)
+            local module="${1:-}"
+            if [[ -z "${module}" ]]; then
+                echo "Usage: devmachine add <module> [args]"
+                exit 1
+            fi
+            run_module "${module}" install "$@"
+            ;;
+        remove)
+            local module="${1:-}"
+            if [[ -z "${module}" ]]; then
+                echo "Usage: devmachine remove <module> [args]"
+                exit 1
+            fi
+            run_module "${module}" remove "$@"
+            ;;
+        status)
+            local module="${1:-}"
+            if [[ -z "${module}" ]]; then
+                echo "Usage: devmachine status <module>"
+                exit 1
+            fi
+            run_module "${module}" status
+            ;;
+        list)
+            echo "Available modules:"
+            for module in "${MODULES_DIR}"/*.sh; do
+                [[ -f "${module}" ]] && echo "  - ${module##*/}"
+            done
+            ;;
+        doctor)
+            run_doctor
+            ;;
+        ai)
+            local prompt="${1:-}"
+            if [[ -z "${prompt}" ]]; then
+                echo "Usage: devmachine ai \"<natural language>\""
+                exit 1
+            fi
+            run_ai "${prompt}"
+            ;;
+        config)
+            run_config "$@"
+            ;;
+        --version)
+            echo "devmachine ${VERSION:-1.0.0}"
+            ;;
+        *)
+            echo "DevMachine - Production-Grade Dev Environment CLI Tool"
+            echo ""
+            echo "Usage: devmachine <command> [options]"
+            echo ""
+            echo "Commands:"
+            echo "  add <module>     Install a development tool"
+            echo "  remove <module>  Remove a development tool"
+            echo "  status <module>  Check status of a tool"
+            echo "  list            List available modules"
+            echo "  doctor          Run system diagnostics"
+            echo "  ai \"<prompt>\"    Generate module using AI"
+            echo "  config show     Show configuration"
+            echo "  --version       Show version"
+            echo ""
+            echo "Examples:"
+            echo "  devmachine add jdk 21"
+            echo "  devmachine add localstack"
+            echo "  devmachine ai \"Create a kubectl module\""
+            exit 1
+            ;;
+    esac
+}
+
+# Ensure script is not sourced
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

@@ -1,0 +1,29 @@
+# DevMachine Configuration File Template
+# Copy this file to devmachine.conf and fill in your values
+
+# AI Provider Configuration
+# Supported providers: openai, anthropic, local (for testing)
+AI_PROVIDER=openai
+
+# OpenAI Provider Settings
+AI_API_KEY=your_openai_api_key_here
+AI_API_BASE=https://api.openai.com/v1
+AI_MODEL=gpt-3.5-turbo
+
+# Optional: Alternative providers
+# ANTHROPIC_API_KEY=your_anthropic_api_key_here
+# ANTHROPIC_MODEL=claude-3-sonnet-20240229
+
+# Logging Configuration
+LOG_LEVEL=INFO
+LOG_MAX_SIZE=10MB
+LOG_MAX_FILES=5
+
+# Download Settings
+DOWNLOAD_TIMEOUT=300
+RETRY_COUNT=3
+
+# Module Settings
+DEFAULT_INSTALL_DIR=/opt
+DEFAULT_DOWNLOAD_DIR=${HOME}/Downloads
+PROFILE_D_DIR=/etc/profile.d

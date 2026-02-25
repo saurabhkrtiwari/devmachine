@@ -1,0 +1,44 @@
+# Configuration files with secrets
+config/devmachine.conf
+!config/devmachine.conf.example
+
+# Temporary files
+tmp/
+logs/
+*.log
+*.tmp
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Downloads
+Downloads/
+
+# Build artifacts
+*.tar.gz
+*.zip
+
+# Runtime files
+devmachine.pid
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Dependencies (if any added later)
+node_modules/
+vendor/
+
+# Local development
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
