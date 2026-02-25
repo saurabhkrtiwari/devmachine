@@ -1,0 +1,49 @@
+name: Configure Branch Protection
+
+on:
+  workflow_dispatch:
+    inputs:
+      maintainer_username:
+        description: 'GitHub username of maintainer'
+        required: true
+        default: 'saurabhkrtiwari'
+
+jobs:
+  configure-branch-protection:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure branch protection
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const maintainer = '${{ inputs.maintainer_username }}';
+
+            // Enable branch protection for main branch
+            github.rest.repos.updateBranchProtection({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              branch: 'main',
+              required_status_checks: null,
+              enforce_admins: true,
+              required_pull_request_reviews: {
+                required_approving_review_count: 1,
+                dismiss_stale_reviews: false,
+                require_code_owner_reviews: false
+              },
+              restrictions: {
+                users: [
+                  maintainer
+                ],
+                teams: []
+              }
+            });
+
+            console.log(`Branch protection configured for main branch`);
+            console.log(`Maintainer: ${maintainer}`);
+            console.log(`Only ${maintainer} can merge directly to main`);
+            console.log(`All other contributors must create pull requests`);
