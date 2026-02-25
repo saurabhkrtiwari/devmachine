@@ -118,24 +118,23 @@ echo ""
 # Check modules
 echo "3. Modules"
 echo "----------"
-MODULES_DIR="${SCRIPT_DIR}/modules"
-MODULES=0
+MODULES_COUNT=0
 
 for module in "${MODULES_DIR}"/*.sh; do
     if [[ -f "${module}" ]]; then
-        local module_name="${module##*/}"
+        module_name="${module##*/}"
         if test_executable "${module}" "Module: ${module_name}"; then
             # Check if module has required functions
             if grep -q "install()" "${module}" && \
                grep -q "remove()" "${module}" && \
-               grep -q "status()" "${module}; then
+               grep -q "status()" "${module}"; then
                 echo -e "  ${GREEN}✓${NC} Required functions found"
             else
                 echo -e "  ${RED}✗${NC} Missing required functions"
-                ((MODULES++))
+                ((MODULES_COUNT++))
             fi
         else
-            ((MODULES++))
+            ((MODULES_COUNT++))
         fi
     fi
 done
@@ -176,7 +175,7 @@ echo ""
 # Summary
 echo "5. Summary"
 echo "----------"
-TOTAL_TESTS=$((PREREQS + STRUCTURE + MODULES + CLI_TESTS))
+TOTAL_TESTS=$((PREREQS + STRUCTURE + MODULES_COUNT + CLI_TESTS))
 
 if [[ ${TOTAL_TESTS} -eq 0 ]]; then
     echo -e "${GREEN}All tests passed!${NC}"

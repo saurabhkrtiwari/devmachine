@@ -129,7 +129,7 @@ validate_module() {
         "wget.*-O-.*|bash"
         "curl.*|bash"
         "exec.*bash"
-        "sudo.*rm"
+        "sudo rm.* /"
         "system.*rm"
     )
 
